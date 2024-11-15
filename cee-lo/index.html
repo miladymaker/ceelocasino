@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>After-Hours Cee-Lo</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="canvasContainer"></div>
+
+    <div id="gameContainer">
+        <div id="gameInfo">
+            <div id="player1" class="player-info">
+                <h3>Player 1</h3>
+            </div>
+
+            <div id="player2" class="player-info">
+                <h3>Player 2</h3>
+            </div>
+
+            <div id="gameStatus">
+            </div>
+        </div>
+
+        <div id="controls">
+            <div id="bettingControls">
+                <input type="number" id="betInput" min="1" max="40" value="1">
+                <button id="betButton">Place Bet</button>
+            </div>
+
+            <div id="confirmBetButtons" style="display:none;">
+                <button id="acceptBetButton">Accept Bet</button>
+                <button id="quitButton">Walk Away</button>
+            </div>
+
+            <button id="rollButton">Roll Dice</button>
+        </div>
+
+        <div id="eventLog">
+        </div>
+    </div>
+
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.151.3/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.151.3/examples/jsm/",
+            "cannon-es": "https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js"
+        }
+    }
+    </script>
+
+    <script type="module" src="main.js"></script>
+</body>
+</html>
