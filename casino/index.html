@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GSaucer: Home of the Pengu Swap 2099</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        #dialogueBox {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: Arial, sans-serif;
+            display: none;
+        }
+        .choice {
+            display: inline-block;
+            margin: 10px;
+            padding: 5px 10px;
+            background-color: rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+        }
+        #walletButton {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="dialogueBox"></div>
+    <div id="walletButton">Connect Wallet</div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.157.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.157.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        let scene, camera, renderer, board, pp, pp2, arcade, mixerPP, mixerPP2, controls, raycaster, mouse, targetPosition;
+        let dialogueBox, currentDialogueStep;
+        let lastMoveTime = 0;
+        let pp2IsMoving = false;
+        const clock = new THREE.Clock();
+
+        let ppIdleAction, ppRunAction, pp2IdleAction, pp2WalkAction;
+
+        let walletButton;
+        let walletConnected = false;
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 10, 10);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.target.set(0, 0, 0);
+            controls.update();
+
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            const backgroundTexture = new THREE.TextureLoader().load('back.png');
+            scene.background = backgroundTexture;
+
+            const boardGeometry = new THREE.PlaneGeometry(10, 10);
+            const boardTexture = new THREE.TextureLoader().load('back.png');
+            const boardMaterial = new THREE.MeshStandardMaterial({
+                map: boardTexture,
+                side: THREE.DoubleSide
+            });
+            board = new THREE.Mesh(boardGeometry, boardMaterial);
+            board.rotation.x = -Math.PI / 2;
+            scene.add(board);
+
+            const loader = new GLTFLoader();
+            loader.load('pp.glb', (gltf) => {
+                pp = gltf.scene;
+                pp.position.set(3, 0, 3);
+                pp.rotation.y = -Math.PI / 2;
+                pp.scale.set(0.5, 0.5, 0.5);
+                scene.add(pp);
+
+                mixerPP = new THREE.AnimationMixer(pp);
+                const idleAnimation = gltf.animations.find(anim => anim.name === 'idle' || anim.name === 'Idle');
+                const runAnimation = gltf.animations.find(anim => anim.name === 'run' || anim.name === 'Run');
+                
+                if (idleAnimation) {
+                    ppIdleAction = mixerPP.clipAction(idleAnimation);
+                }
+                if (runAnimation) {
+                    ppRunAction = mixerPP.clipAction(runAnimation);
+                }
+
+                if (ppIdleAction) ppIdleAction.play();
+            });
+
+            loader.load('pp2.glb', (gltf) => {
+                pp2 = gltf.scene;
+                pp2.position.set(-3, 0, -3);
+                pp2.rotation.y = Math.PI / 2;
+                pp2.scale.set(0.5, 0.5, 0.5);
+                scene.add(pp2);
+
+                mixerPP2 = new THREE.AnimationMixer(pp2);
+                const idleAnimation = gltf.animations.find(anim => anim.name === 'idle' || anim.name === 'Idle');
+                const walkAnimation = gltf.animations.find(anim => anim.name === 'walk' || anim.name === 'Walk');
+                
+                if (idleAnimation) {
+                    pp2IdleAction = mixerPP2.clipAction(idleAnimation);
+                }
+                if (walkAnimation) {
+                    pp2WalkAction = mixerPP2.clipAction(walkAnimation);
+                }
+
+                if (pp2IdleAction) pp2IdleAction.play();
+            });
+
+            loader.load('arcade.glb', (gltf) => {
+                arcade = gltf.scene;
+                arcade.position.set(4.5, .8, 0);
+                arcade.rotation.y = -Math.PI / 2;
+                arcade.scale.set(0.5, 0.5, 0.5);
+                scene.add(arcade);
+            });
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 2.5);
+            directionalLight.position.set(5, 5, 5);
+            scene.add(directionalLight);
+
+            window.addEventListener('resize', onWindowResize, false);
+            renderer.domElement.addEventListener('click', onMouseClick, false);
+
+            dialogueBox = document.getElementById('dialogueBox');
+
+            walletButton = document.getElementById('walletButton');
+            walletButton.addEventListener('click', toggleWallet);
+
+            animate();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onMouseClick(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+
+            const intersects = raycaster.intersectObjects(scene.children, true);
+
+            for (let intersect of intersects) {
+                if (intersect.object.parent === pp2) {
+                    startDialogue();
+                    return;
+                } else if (intersect.object === board) {
+                    targetPosition = intersect.point;
+                    targetPosition.x = Math.max(-5, Math.min(5, targetPosition.x));
+                    targetPosition.z = Math.max(-5, Math.min(5, targetPosition.z));
+                    targetPosition.y = 0;
+                    return;
+                } else if (intersect.object.parent === arcade) {
+                    startArcadeGame();
+                    return;
+                }
+            }
+        }
+
+        function startArcadeGame() {
+            currentDialogueStep = 'arcade';
+            showDialogue("Degen flip", ["Heads", "Tails"]);
+        }
+
+        function startDialogue() {
+            currentDialogueStep = 0;
+            showDialogue("Welcome to GSaucer: Home of the Pengu Swap 2099<br><br>Would you like to swap?", ["Yes", "No"]);
+        }
+
+        function showDialogue(text, choices) {
+            dialogueBox.innerHTML = text + "<br><br>";
+            choices.forEach(choice => {
+                const choiceElement = document.createElement('span');
+                choiceElement.className = 'choice';
+                choiceElement.textContent = choice;
+                choiceElement.onclick = () => handleChoice(choice);
+                dialogueBox.appendChild(choiceElement);
+            });
+            dialogueBox.style.display = 'block';
+        }
+
+        function handleChoice(choice) {
+            switch (currentDialogueStep) {
+                case 0:
+                    if (choice === "Yes") {
+                        currentDialogueStep = 1;
+                        showDialogue("What will you swap?", ["ETH", "BTC", "NONE"]);
+                    } else {
+                        closeDialogue();
+                    }
+                    break;
+                case 1:
+                    if (choice === "NONE") {
+                        closeDialogue();
+                    } else {
+                        currentDialogueStep = 2;
+                        showDialogue("Swap complete", ["Save"]);
+                    }
+                    break;
+                case 2:
+                    closeDialogue();
+                    break;
+                case 'arcade':
+                    if (choice === "Heads") {
+                        showDialogue("Loser", ["Done"]);
+                    } else if (choice === "Tails") {
+                        showDialogue("Winner", ["Done"]);
+                    } else if (choice === "Done") {
+                        closeDialogue();
+                    }
+                    break;
+            }
+        }
+
+        function closeDialogue() {
+            dialogueBox.style.display = 'none';
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            const elapsedTime = clock.getElapsedTime();
+
+            if (mixerPP) mixerPP.update(delta);
+            if (mixerPP2) mixerPP2.update(delta);
+
+            if (pp && targetPosition) {
+                const direction = new THREE.Vector3().subVectors(targetPosition, pp.position);
+                if (direction.length() > 0.1) {
+                    direction.normalize();
+                    const newPosition = pp.position.clone().add(direction.multiplyScalar(0.1));
+                    
+                    if (arcade && !checkCollision(newPosition, arcade.position, 1)) {
+                        pp.position.copy(newPosition);
+                        pp.lookAt(targetPosition.x, pp.position.y, targetPosition.z);
+                        
+                        if (ppRunAction && ppIdleAction) {
+                            ppIdleAction.stop();
+                            ppRunAction.play();
+                        }
+                    } else {
+                        targetPosition = null;
+                    }
+                } else {
+                    targetPosition = null;
+                    if (ppIdleAction && ppRunAction) {
+                        ppRunAction.stop();
+                        ppIdleAction.play();
+                    }
+                }
+            }
+
+            if (pp2 && !pp2IsMoving && elapsedTime - lastMoveTime > 4) {
+                movepp2();
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function movepp2() {
+            if (!pp2 || pp2IsMoving) return;
+
+            pp2IsMoving = true;
+            const directions = [
+                { x: 1, z: 0 }, { x: -1, z: 0 }, { x: 0, z: 1 }, { x: 0, z: -1 },
+                { x: 1, z: 1 }, { x: 1, z: -1 }, { x: -1, z: 1 }, { x: -1, z: -1 }
+            ];
+            
+            let randomDirection;
+            let targetPosition;
+            let attempts = 0;
+            const maxAttempts = 10;
+
+            do {
+                randomDirection = directions[Math.floor(Math.random() * directions.length)];
+                targetPosition = new THREE.Vector3(
+                    THREE.MathUtils.clamp(pp2.position.x + randomDirection.x, -5, 5),
+                    pp2.position.y,
+                    THREE.MathUtils.clamp(pp2.position.z + randomDirection.z, -5, 5)
+                );
+                attempts++;
+            } while (arcade && checkCollision(targetPosition, arcade.position, 1) && attempts < maxAttempts);
+
+            if (attempts >= maxAttempts) {
+                pp2IsMoving = false;
+                lastMoveTime = clock.getElapsedTime();
+                return;
+            }
+
+            const startPosition = pp2.position.clone();
+            const moveDuration = 2; // seconds
+            const startTime = clock.getElapsedTime();
+
+            if (pp2WalkAction && pp2IdleAction) {
+                pp2IdleAction.stop();
+                pp2WalkAction.play();
+            }
+
+            function animatePP2Movement() {
+                const elapsedTime = clock.getElapsedTime() - startTime;
+                const progress = Math.min(elapsedTime / moveDuration, 1);
+
+                pp2.position.lerpVectors(startPosition, targetPosition, progress);
+                pp2.lookAt(targetPosition);
+
+                if (progress < 1) {
+                    requestAnimationFrame(animatePP2Movement);
+                } else {
+                    pp2IsMoving = false;
+                    lastMoveTime = clock.getElapsedTime();
+                    if (pp2IdleAction && pp2WalkAction) {
+                        pp2WalkAction.stop();
+                        pp2IdleAction.play();
+                    }
+                }
+            }
+
+            animatePP2Movement();
+        }
+
+        function checkCollision(position1, position2, threshold) {
+            return position1.distanceTo(position2) < threshold;
+        }
+
+        function toggleWallet() {
+            if (walletConnected) {
+                walletButton.textContent = "Connect Wallet";
+                walletConnected = false;
+            } else {
+                walletButton.textContent = "Balance: 4.20 ETH";
+                walletConnected = true;
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
